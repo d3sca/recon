@@ -2,10 +2,14 @@
 
 ## those tools should be installed in able for recon.bash to work:
 
-- nuclei with templates locations you should change
-- amass with config.ini and api's form passive subdomains scanner ex. securitytrails 
+- nuclei 
+- amass 
 - assetfinder
 - subfinder
+
+## Changes:
+- Change nuclei templates location
+- Change amass's config.ini location and enter passive subdomains enums api ex. securitytrails , you can find it in https://github.com/OWASP/Amass/blob/master/examples/config.ini
 
 
 ## what the script will do:
