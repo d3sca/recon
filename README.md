@@ -17,12 +17,6 @@ it will extract subdomains passively form sourced like  ex. security trails and 
 
 
 
-
-# 403_bypass.sh
-
-#usage ./Bypass-403.sh https://example.com
-
-
 # Tools
 https://github.com/AlexisAhmed/BugBountyToolkit
 
