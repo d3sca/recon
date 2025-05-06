@@ -63,7 +63,7 @@ run_nuclei_scan() {
 
 # Check if required tools are installed
 check_requirements() {
-    tools=("nuclei" "assetfinder" "subfinder" "amass" "httpx")
+    tools=("nuclei" "assetfinder" "subfinder" "amass" "httpx" "ffuf")
     missing_tools=()
     
     for tool in "${tools[@]}"; do
@@ -164,8 +164,68 @@ main() {
         count=$(wc -l < "$domain_dir/subdomains.txt")
         print_success "Found $count active HTTP/HTTPS services"
         
-        # Run nuclei scans
+        # Run fuzzing with ffuf
+        print_section "Running directory and path fuzzing with ffuf..."
+        
+        # Create directory for ffuf results
+        mkdir -p "$domain_dir/fuzzing"
+        
+        # Common wordlists - adjust paths as needed
+        COMMON_WORDLIST="/usr/share/wordlists/dirb/common.txt"
+        API_WORDLIST="/usr/share/wordlists/api/endpoints.txt"
+        
+        # Check if wordlists exist, if not use default paths or download
+        if [ ! -f "$COMMON_WORDLIST" ]; then
+            print_error "Common wordlist not found at $COMMON_WORDLIST"
+            # Try to use alternative location or download it
+            if [ -f "/usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt" ]; then
+                COMMON_WORDLIST="/usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt"
+                print_success "Using alternative wordlist: $COMMON_WORDLIST"
+            else
+                print_section "Downloading common wordlist..."
+                mkdir -p /usr/share/wordlists/dirb/
+                curl -s -o "$COMMON_WORDLIST" "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt"
+                if [ -f "$COMMON_WORDLIST" ]; then
+                    print_success "Downloaded common wordlist"
+                else
+                    print_error "Failed to download wordlist"
+                fi
+            fi
+        fi
+        
+        # Create a list of active subdomains to fuzz
+        ACTIVE_DOMAINS="$domain_dir/active_domains.txt"
+        cat "$domain_dir/subdomains.txt" > "$ACTIVE_DOMAINS"
+        
+        # Run ffuf against each active subdomain
+        print_section "Fuzzing directories and paths on active subdomains..."
+        
+        while IFS= read -r target; do
+            target_name=$(echo "$target" | sed 's/https\?:\/\///' | sed 's/[\/\.]/_/g')
+            output_file="$domain_dir/fuzzing/${target_name}_dirs.json"
+            
+            print_section "Fuzzing $target..."
+            ffuf -u "${target}/FUZZ" -w "$COMMON_WORDLIST" -mc 200,201,202,203,204,301,302,307,401,403,405 -of json -o "$output_file" -s
+            
+            # Extract discovered URLs from ffuf output
+            if [ -f "$output_file" ]; then
+                cat "$output_file" | jq -r '.results[] | .url' 2>/dev/null > "$domain_dir/fuzzing/${target_name}_urls.txt"
+                print_success "Fuzzing complete for $target. Found $(wc -l < "$domain_dir/fuzzing/${target_name}_urls.txt") endpoints."
+            else
+                print_error "Fuzzing failed for $target"
+            fi
+        done < "$ACTIVE_DOMAINS"
+        
+        # Combine all discovered URLs
+        find "$domain_dir/fuzzing/" -name "*_urls.txt" -exec cat {} \; > "$domain_dir/fuzzed_endpoints.txt"
+        print_success "Combined $(wc -l < "$domain_dir/fuzzed_endpoints.txt") fuzzed endpoints"
+        
+        # Run nuclei scans against both subdomain list and fuzzed endpoints
         print_section "Running vulnerability scans with nuclei..."
+        
+        # Combine subdomain and fuzzed endpoint lists
+        cat "$domain_dir/subdomains.txt" "$domain_dir/fuzzed_endpoints.txt" | sort -u > "$domain_dir/all_targets.txt"
+        print_success "Combined target list with $(wc -l < "$domain_dir/all_targets.txt") unique endpoints"
         
         # Define scan types
         scan_types=(
@@ -177,9 +237,17 @@ main() {
             "exposed-panels"
         )
         
-        # Run all scans
+        # Run all scans on the combined target list
         for scan_type in "${scan_types[@]}"; do
-            run_nuclei_scan "$domain_dir" "$NUCLEI_TEMPLATES/$scan_type" "$domain_dir/${scan_type}.txt"
+            # Update the run_nuclei_scan function call to use the all_targets.txt file
+            print_section "Running scan for $scan_type..."
+            nuclei -l "$domain_dir/all_targets.txt" -t "$NUCLEI_TEMPLATES/$scan_type" -o "$domain_dir/${scan_type}.txt" 2>/dev/null
+            
+            if [[ -f "$domain_dir/${scan_type}.txt" && -s "$domain_dir/${scan_type}.txt" ]]; then
+                print_success "Scan for $scan_type completed. Results saved to $domain_dir/${scan_type}.txt"
+            else
+                print_success "Scan for $scan_type completed. No issues found."
+            fi
         done
         
         # Create summary file
@@ -188,9 +256,15 @@ main() {
             echo "# Reconnaissance Summary for $domain"
             echo "Date: $(date)"
             echo
-            echo "## Subdomain Enumeration"
+            echo "## Enumeration Results"
             echo "- Total unique subdomains found: $(wc -l < "$domain_dir/non-http_list.txt")"
             echo "- Live HTTP/HTTPS endpoints: $(wc -l < "$domain_dir/subdomains.txt")"
+            
+            # Add fuzzing results if available
+            if [[ -f "$domain_dir/fuzzed_endpoints.txt" ]]; then
+                echo "- Fuzzed endpoints discovered: $(wc -l < "$domain_dir/fuzzed_endpoints.txt")"
+                echo "- Total unique targets scanned: $(wc -l < "$domain_dir/all_targets.txt")"
+            fi
             echo
             echo "## Vulnerability Scan Results"
             
