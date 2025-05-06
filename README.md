@@ -26,7 +26,8 @@ The script will do the following:
 ## what the script will do:
 it will extract subdomains passively form sourced like  ex. security trails and then check for any 443 or 80 port listening on them then make a file containing all the subdomains and test them with nuclei default templates.
 
-## Output structure:
+## Output structure: <br>
+```plaintext
 recon_results_YYYYMMDD_HHMMSS/
 ├── example.com/
 │   ├── amass.txt
@@ -48,6 +49,9 @@ recon_results_YYYYMMDD_HHMMSS/
 │   └── vulnerabilities.txt
 └── test.org/
     └── [same structure as above]
+```
 
+## Disclaimer
+This tool is provided for educational and legal security testing purposes only. Users are responsible for complying with applicable laws and obtaining proper authorization before scanning any domains.
 
 
