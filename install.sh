@@ -303,12 +303,50 @@ main() {
     mkdir -p /root/tools
     mkdir -p /root/tools/scripts
     
+    # Function to install ffuf
+    install_ffuf() {
+        print_section "Installing ffuf..."
+        
+        if command_exists ffuf; then
+            print_success "ffuf is already installed"
+            return
+        fi
+        
+        go install -v github.com/ffuf/ffuf@latest
+        
+        if command_exists ffuf; then
+            print_success "ffuf installed successfully"
+        else
+            print_error "Failed to install ffuf"
+        fi
+    }
+    
     # Install tools
     install_nuclei
     install_assetfinder
     install_subfinder
     install_amass
     install_httpx
+    install_ffuf
+    
+    # Download common wordlists
+    print_section "Downloading common wordlists for fuzzing..."
+    mkdir -p /usr/share/wordlists/dirb/
+    mkdir -p /usr/share/wordlists/api/
+    
+    if [ ! -f "/usr/share/wordlists/dirb/common.txt" ]; then
+        curl -s -o "/usr/share/wordlists/dirb/common.txt" "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt"
+        print_success "Downloaded common.txt wordlist"
+    else
+        print_success "common.txt wordlist already exists"
+    fi
+    
+    if [ ! -f "/usr/share/wordlists/api/endpoints.txt" ]; then
+        curl -s -o "/usr/share/wordlists/api/endpoints.txt" "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/api/api-endpoints.txt"
+        print_success "Downloaded API endpoints wordlist"
+    else
+        print_success "API endpoints wordlist already exists"
+    fi
     
     # Create config files
     create_amass_config
